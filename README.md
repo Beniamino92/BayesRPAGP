@@ -1,2 +1,2 @@
-# RPAGP
-Random Phase-Amplitude Gaussian Process
+# BayesRPAGP
+Bayesian Random Phase-Amplitude Gaussian Process
