@@ -18,6 +18,6 @@ We provide a snapshot of `tutorial.Rmd`, which contains a tutorial for using our
                          pinned_value = pinned_value)
   ```
 <p align="center">
-<img src="https://github.com/Beniamino92/BayesRPAGP/plots/example.pdf" width="400" heigth="140"/> 
+<img src="[https://github.com/Beniamino92/BayesRPAGP/plots/example.pdf](https://github.com/Beniamino92/BayesRPAGP/blob/main/plots/example.pdf)https://github.com/Beniamino92/BayesRPAGP/blob/main/plots/example.pdf" width="400" heigth="240"/> 
 </p>
 
