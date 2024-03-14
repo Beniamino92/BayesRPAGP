@@ -1,0 +1,165 @@
+---
+title: "Illustrative Example"
+author: "Beniamino Hadj-Amar"
+date: '2024-03-15'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Working directory
+
++ current directory should include the folder "/rpagap" 
+
+```{r setwd, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+my_dir <- "/Users/beniamino/Desktop_New/Research/SR_Revision/Code/GitHub/"
+setwd(my_dir)
+```
+
+
+## Preamble {.tabset}
+
+### Packages
+
+Loading the required packages.
+
+```{r packages, include=TRUE, echo=TRUE, eval=TRUE, cache=FALSE}
+
+library(ggplot2)
+library(dplyr)
+library(ltsa)
+library(mvtnorm)
+library(beyondWhittle)
+library(invgamma)
+library(MASS)
+library(bentcableAR)
+
+```
+
+
+```{r utils, include=TRUE, echo=TRUE, eval=TRUE, cache=FALSE}
+files.sources = list.files("rpagp/", full.names = T)
+sapply(files.sources, source)
+```
+
+
+## Simulation Setting {.tabset}
+
+### True generating parameters and simulated data
+```{r generating_parameters, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+set.seed(1008)
+
+n <- 20
+n_time <- 50
+n_sims <- 1
+
+# 
+theta <- list(rho = 10,
+              beta = rep(c(1, 2), n / 2),
+              tau = rnorm(n, 0, 0.1),
+              phi = c(0.5, 0.1),
+              sigma = 0.25)
+
+# 
+
+
+# set.seed(108)
+dat <- generate_data(n, n_time, theta)
+dat_trials <- reshape2::melt(dat$y, varnames = c("time", "trial"))
+```
+
+### Plot trials
+```{r plot_data, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+ggplot(dat_trials) + 
+  geom_line(aes(x = time, y = value, group = factor(trial)), alpha = 0.25) + 
+  # truth
+  geom_line(data =data.frame(time = 1:n_time, f = dat$f), 
+            aes(x = time, y = f), linetype = 1, size = 1, col = "darkgreen") + 
+  labs(y = "", x = "Time") + 
+  scale_color_manual("Legend Title", limits=c("Weekly Forecast", "Main Forecast", "ciao"), values = c("red","red", "red")) +
+  guides(colour = guide_legend(override.aes = list(pch = c(16, 21, 16), fill = c("red", "white", "red")))) +
+  theme_bw() + 
+  theme(panel.grid = element_blank(), 
+        axis.text.y = element_blank(), 
+        axis.ticks.y = element_blank(), 
+        axis.text.x = element_blank(), 
+        axis.ticks.x = element_blank())
+```
+
+## Run RPAGP  {.tabset}
+
+### Hyperparameters
+```{r hyperparameters, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+# hyperparam MCMC 
+hyperparam <- list(tau_prior_sd = 0.2, tau_proposal_sd = 1e-3,
+                   rho_prior_shape = 12, rho_prior_scale = 1,
+                   rho_proposal_sd = 1, beta_prior_mu = 1, beta_prior_sd = 0.5)
+
+# initial values
+theta0 <- list(rho = 15,
+               beta = c(rep(1, n)),
+               tau = rep(0, n),
+               phi = c(0.5, 0.1),
+               sigma = 0.5)
+# pinned point/value
+pinned_point = n_time/2 
+pinned_value = apply(dat$y, 1, mean)[pinned_point]
+
+# n_MCMC iterations
+n_iter <- 3000
+```
+
+### MCMC 
+```{r MCMC, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+results <- fit_rpagp(y = dat$y, n_iter = n_iter,
+                         theta0 = theta0, hyperparam = hyperparam,
+                         pinned_point = pinned_point,
+                         pinned_value = pinned_value)
+# Summary output MCMC 
+burn_in = (0.6*n_iter)
+out_sim <- getSummaryOutput(results, dat_trials, dat$y, burn_in)
+```
+
+### Display results
+```{r plot_results, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+ggplot(dat_trials) + 
+  geom_line(aes(x = time, y = value, group = factor(trial)), alpha = 0.25) + 
+  # estimated f
+  geom_line(data =  out_sim %>% dplyr::group_by(time) %>%
+              dplyr::summarize(med = median(med)), 
+            aes(x = time, y = med), linewidth = 1, size= 1, col = "chartreuse3") + 
+  # truth
+  geom_line(data =data.frame(time = 1:n_time, f = dat$f), 
+            aes(x = time, y = f), linetype = 2, size = 1, col = "darkgreen") + 
+  # empirical mean
+  geom_line(data = dat_trials %>% dplyr::group_by(time)
+            %>% dplyr::summarize(mean = mean(value)), 
+            aes(x = time, y = mean), linewidth = 1, linetype = "dotted", col = "black") + 
+  labs(y = "", x = "Time") + 
+  scale_color_manual("Legend Title", limits=c("Weekly Forecast", "Main Forecast", "ciao"), values = c("red","red", "red")) +
+  guides(colour = guide_legend(override.aes = list(pch = c(16, 21, 16), fill = c("red", "white", "red")))) +
+  theme_bw() + 
+  theme(panel.grid = element_blank(), 
+        axis.text.y = element_blank(), 
+        axis.ticks.y = element_blank(), 
+        axis.text.x = element_blank(), 
+        axis.ticks.x = element_blank())
+```
+
+### MSE (RPAGP vs EMP)
+```{r MSE, include=TRUE,echo=TRUE, eval = TRUE,  cache=TRUE}
+f_hat = out_sim %>% dplyr::group_by(time) %>%
+  dplyr::summarize(med = median(med)) %>% dplyr::select(med)
+f_EMP = dat_trials %>% dplyr::group_by(time) %>%
+  dplyr::summarize(mean = mean(value)) %>% dplyr::select(mean)
+  
+cat("MSE(RPAGP):", sum((f_hat - dat$f)^2)/n_time, sep = "")
+cat("MSE(EMP):", sum((f_EMP - dat$f)^2)/n_time, sep = "")
+```
+
+
+
+
